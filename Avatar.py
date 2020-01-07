@@ -4,7 +4,7 @@ from panda3d.core import CompassEffect, ClockObject
 
 cam_pivot_z_value: float = 3.0
 cam_distance: float = 20.0
-mouse_tolerance: float = .005
+mouse_tolerance: float = .05
 
 ralph: str = "./models/ralph.egg"
 ralph_animations: typing.Dict[str, str] = {"idle": "./models/ralph-idle",
@@ -42,10 +42,15 @@ class Avatar(Actor):
 
         super().__init__(model, animation_dict)
 
+        self.__task_manager = game_base.taskMgr  # gets the task manager
+
         """camera controls section"""
         self.__mouse_watcher_node = game_base.mouseWatcherNode  # gets the mouse watcher from game_base
         self.__win = game_base.win  # gets the window from the game_base
-        self.__task_manager = game_base.taskMgr  # gets the task manager
+
+        self.__skip_frame = False   # a bool to skip a frame when returning from a pause.
+
+        # this variable is needed since the cursor is moved to the given position in the next frame.
 
         self.__cam_pivot = self.attachNewNode("camera-pivot-point")  # adds a point for the camera to rotate around
         self.__cam_pivot.setZ(cam_pivot_z_value)  # sets the height of the point
@@ -53,8 +58,6 @@ class Avatar(Actor):
 
         game_base.cam.reparentTo(self.__cam_pivot)  # attach the camera to the node
         game_base.cam.setY(-cam_distance)  # moves the camera back so avatar is visible
-
-        self.__task_manager.add(self.__cam_rotation_task, "camera_rotation_task")
 
         """avatar movement section"""
         self.__global_clock = ClockObject.getGlobalClock()
@@ -82,8 +85,6 @@ class Avatar(Actor):
         self.accept("d-up", self.__set_key, ["d", False])
         self.accept("shift-up", self.__set_key, ["shift", False])
 
-        self.__task_manager.add(self.__movement_task, "movement_task")
-
         """animation section"""
 
         self.__blend_map = {"idle": 1.0,
@@ -94,9 +95,7 @@ class Avatar(Actor):
         self.loop("idle")
         self.__current_animation = "idle"
         self.__prev_animation = None
-        self.__set_animation("idle")
-
-        self.__task_manager.add(self.__blend_task, "animation_blend")
+        self.play()
 
         pass
 
@@ -126,6 +125,14 @@ class Avatar(Actor):
             self.__win.movePointer(0,  # moves cursor to the center
                                    int(props.getXSize() / 2),
                                    int(props.getYSize() / 2))
+
+            """when returning from a pause, the cursor may not be in the center of the window.
+               to avoid moving the camera when returning to play, is necessary to skip a frame.
+            """
+            if self.__skip_frame:
+                self.__skip_frame = False
+                return task.cont
+
             """
             checks if the cursor is far enough from the center, or in some cases (usually when the window gets resized)
             the camera may move even if the cursor doesn't. Then rotates the camera pivot node based on the coordinates
@@ -204,6 +211,22 @@ class Avatar(Actor):
             self.__prev_animation = self.__current_animation
             self.__current_animation = animation
             pass
+        return
+
+    def play(self):
+        self.__skip_frame = True
+        self.__task_manager.add(self.__cam_rotation_task, "camera_rotation_task")
+        self.__task_manager.add(self.__movement_task, "movement_task")
+        self.__task_manager.add(self.__blend_task, "animation_blend")
+        self.acceptOnce("escape", self.stop)
+        return
+
+    def stop(self):
+        self.__task_manager.remove("camera_rotation_task")
+        self.__task_manager.remove("movement_task")
+        self.__set_animation("idle")
+
+        self.acceptOnce("escape", self.play)
         return
 
     pass

@@ -4,7 +4,7 @@
   "maya2egg -a model -bface -ps strip -cn Ralph Ralph.mb Ralph.egg"
 }
 <Texture> lambert2SG {
-  "ralph.jpg"
+  "./ralph.jpg"
   <Scalar> format { rgb }
   <Scalar> wrapu { repeat }
   <Scalar> wrapv { repeat }
