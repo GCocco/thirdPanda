@@ -11,24 +11,23 @@ ralph_animations: typing.Dict[str, str] = {"idle": "./models/ralph-idle",
                                            "walk": "./models/ralph-walk",
                                            "run": "./models/ralph-run"}
 
-angles_map = {(True, False, False, False): 0,  # gets the angle of the avatar based on pressed keys
-              (False, True, False, False): -90,  # invalid combinations of keys are ignored
-              (False, False, True, False): 180,
-              (False, False, False, True): 90,
-              (True, True, False, False): -45,
-              (True, False, False, True): 45,
-              (False, True, True, False): -135,
-              (False, False, True, True): 135}
+angles_map = {(True, False, False, False): 180,  # gets the angle of the avatar based on pressed keys
+              (False, True, False, False): 90,  # invalid combinations of keys are ignored
+              (False, False, True, False): 0,
+              (False, False, False, True): -90,
+              (True, True, False, False): 135,
+              (True, False, False, True): -135,
+              (False, True, True, False): 45,
+              (False, False, True, True): -45}
 
 fixed_update_delta: float = .01
 
-walk_speed: float = 20
-run_speed: float = 30
+walk_speed: float = -20
+run_speed: float = -30
 
 
 class Avatar(Actor):
 
-    # noinspection PyArgumentList
     def __init__(self, game_base, model=ralph, animation_dict=None):
         """
 
@@ -64,16 +63,19 @@ class Avatar(Actor):
                           "s": False,
                           "d": False,
                           "shift": False}
-        """
-        when a movement button is pressed, changes it's value to True in the keymap
-        """
+
+        # when a movement button is pressed, changes it's value to True in the keymap
 
         self.accept("w", self.__set_key, ["w", True])
         self.accept("a", self.__set_key, ["a", True])
         self.accept("s", self.__set_key, ["s", True])
         self.accept("d", self.__set_key, ["d", True])
         self.accept("shift", self.__set_key, ["shift", True])
-
+        self.accept("shift-w", self.__set_key, ["w", True])
+        self.accept("shift-a", self.__set_key, ["a", True])
+        self.accept("shift-s", self.__set_key, ["s", True])
+        self.accept("shift-d", self.__set_key, ["d", True])
+        self.accept("shift", self.__set_key, ["shift", True])
         self.accept("w-up", self.__set_key, ["w", False])
         self.accept("a-up", self.__set_key, ["a", False])
         self.accept("s-up", self.__set_key, ["s", False])
@@ -81,6 +83,21 @@ class Avatar(Actor):
         self.accept("shift-up", self.__set_key, ["shift", False])
 
         self.__task_manager.add(self.__movement_task, "movement_task")
+
+        """animation section"""
+
+        self.__blend_map = {"idle": 1.0,
+                            "walk": .0,
+                            "run": .0}
+
+        self.enableBlend()
+        self.loop("idle")
+        self.__current_animation = "idle"
+        self.__prev_animation = None
+        self.__set_animation("idle")
+
+        self.__task_manager.add(self.__blend_task, "animation_blend")
+
         pass
 
     def __set_key(self, key, value):
@@ -135,20 +152,59 @@ class Avatar(Actor):
         """
 
         angle = angles_map.get((self.__key_map["w"], self.__key_map["a"], self.__key_map["s"], self.__key_map["d"]))  # gets the angle for the pressed keys combination
-        if angle is not None:       # if the combination of keys is valid
+        if angle is not None:                            # if the combination of keys is valid
             self.setH(self.__cam_pivot.getH() - angle)   # rotates the avatar the given value relatively to the camera
             if self.__key_map["shift"]:                  # if shift is pressed (run)
                 self.setY(self, run_speed * self.__global_clock.getDt())
+                self.__set_animation("run")
                 pass
             else:
                 self.setY(self, walk_speed * self.__global_clock.getDt())
+                self.__set_animation("walk")
                 pass
             pass
         else:
-            # idle
+            self.__set_animation("idle")
             pass
         # print(self.__global_clock.getDt())
         return task.cont
+
+    def __blend_task(self, task):
+        """
+
+        :param task: direct.task.Task panda assigned Task obj
+        :return: Task.cont
+        """
+        for animation in self.__blend_map:
+            if animation == self.__current_animation and self.__blend_map[animation] < 1.0:
+                self.__blend_map[animation] += .1
+                pass
+
+            elif animation != self.__current_animation and self.__blend_map[animation] > 0.1:
+                self.__blend_map[animation] -= .1
+                pass
+
+            self.setControlEffect(animation, self.__blend_map[animation])
+
+            if self.__blend_map[animation] < .0:
+                self.getAnimControl(animation).stop()
+                pass
+            pass
+
+        return task.cont
+
+    def __set_animation(self, animation):
+        """
+
+        :param animation: str the animation name
+        :return:
+        """
+        if self.__prev_animation != animation:
+            self.loop(animation)
+            self.__prev_animation = self.__current_animation
+            self.__current_animation = animation
+            pass
+        return
 
     pass
 
