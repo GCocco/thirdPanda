@@ -87,9 +87,11 @@ class Avatar(Actor):
 
         """animation section"""
 
-        self.__blend_map = {"idle": 1.0,
+        """self.__blend_map = {"idle": 1.0,
                             "walk": .0,
                             "run": .0}
+        """
+        self.__blend_map = {animation_name: .0 for animation_name in animation_dict}
 
         self.enableBlend()
         self.loop("idle")
@@ -163,17 +165,16 @@ class Avatar(Actor):
             self.setH(self.__cam_pivot.getH() - angle)   # rotates the avatar the given value relatively to the camera
             if self.__key_map["shift"]:                  # if shift is pressed (run)
                 self.setY(self, run_speed * self.__global_clock.getDt())
-                self.__set_animation("run")
+                self.set_animation("run")
                 pass
             else:
                 self.setY(self, walk_speed * self.__global_clock.getDt())
-                self.__set_animation("walk")
+                self.set_animation("walk")
                 pass
             pass
         else:
-            self.__set_animation("idle")
+            self.set_animation("idle")
             pass
-        # print(self.__global_clock.getDt())
         return task.cont
 
     def __blend_task(self, task):
@@ -200,7 +201,7 @@ class Avatar(Actor):
 
         return task.cont
 
-    def __set_animation(self, animation):
+    def set_animation(self, animation):
         """
 
         :param animation: str the animation name
@@ -213,7 +214,7 @@ class Avatar(Actor):
             pass
         return
 
-    def play(self):
+    def play_char(self):
         self.__skip_frame = True
         self.__task_manager.add(self.__cam_rotation_task, "camera_rotation_task")
         self.__task_manager.add(self.__movement_task, "movement_task")
@@ -221,10 +222,10 @@ class Avatar(Actor):
         self.acceptOnce("escape", self.stop)
         return
 
-    def stop(self):
+    def stop_char(self):
         self.__task_manager.remove("camera_rotation_task")
         self.__task_manager.remove("movement_task")
-        self.__set_animation("idle")
+        self.set_animation("idle")
 
         self.acceptOnce("escape", self.play)
         return
