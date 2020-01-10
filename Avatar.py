@@ -1,7 +1,8 @@
 import typing
 from direct.actor.Actor import Actor
-from panda3d.core import CompassEffect, ClockObject
-from panda3d.core import CollisionBox, CollisionNode, Point3, CollisionHandlerPusher, CollisionTraverser
+from panda3d.core import CompassEffect, ClockObject, Point3
+from panda3d.core import CollisionBox, CollisionSegment, CollisionNode
+from panda3d.core import CollisionHandlerPusher, CollisionHandlerQueue, CollisionTraverser
 
 cam_pivot_z_value: float = 3.0
 cam_distance: float = 20.0
@@ -28,8 +29,11 @@ run_speed: float = -30
 
 collider_x = 1
 collider_y = 1
-collider_bottom = .5
+collider_bottom = 1
 collider_top = 5
+
+climb_threshold = 1
+fall_speed = 9
 
 
 class Avatar(Actor):
@@ -47,7 +51,6 @@ class Avatar(Actor):
             pass
 
         super().__init__(model, animation_dict)
-
         self.__task_manager = game_base.taskMgr  # gets the task manager
 
         """camera controls section"""
@@ -55,7 +58,6 @@ class Avatar(Actor):
         self.__win = game_base.win  # gets the window from the game_base
 
         self.__skip_frame = False   # a bool to skip a frame when returning from a pause.
-
         # this variable is needed since the cursor is moved to the given position in the next frame.
 
         self.__cam_pivot = self.attachNewNode("camera-pivot-point")  # adds a point for the camera to rotate around
@@ -105,17 +107,32 @@ class Avatar(Actor):
         self.__player_collider = self.attachNewNode(CollisionNode("player-collider"))
         self.__player_collider.node().addSolid(CollisionBox(Point3(collider_x, collider_y, collider_bottom),
                                                             Point3(-collider_x, -collider_y, collider_top)))
-        self.__player_collider.show()
+
         pusher = CollisionHandlerPusher()
         pusher.addCollider(self.__player_collider, self)
+
+        # base cTrav may not be instantiated, may need to do it here
         try:
             base.cTrav.addCollider(pusher, self.__collider_handler)
             pass
         except AttributeError:
+            print("warning (Avatar): base.cTrav is not instantiated yet. Consider doing it before creating a Avatar")
             base.cTrav = CollisionTraverser()
             base.cTrav.addCollider(self.__player_collider, pusher)
             pass
         pass
+
+        """the character needs something that pushes him to the ground.
+           this won't be simulated gravity force since speed is gonna be constant"""
+
+        self.__ground_pusher = self.attachNewNode(CollisionNode("ground-pusher"))
+        self.__ground_pusher.node().addSolid(CollisionSegment(0, 0, collider_bottom,
+                                                              0, 0, collider_bottom-climb_threshold))
+        self.__ground_handler = CollisionHandlerQueue()
+        self.__ground_pusher.show()
+        self.__ground_pusher.node().setIntoCollideMask(0b0)
+        base.cTrav.addCollider(self.__ground_pusher, self.__ground_handler)
+        self.__task_manager.add(self.__ground_task, "ground-task")
 
     def __set_key(self, key, value):
         """
@@ -230,6 +247,12 @@ class Avatar(Actor):
             pass
         return
 
+    def __ground_task(self, task):
+        if self.__ground_handler.getNumEntries() == 0:
+            self.setZ(self, -fall_speed * self.__global_clock.getDt())
+            pass
+        return task.cont
+
     def play_char(self):
         self.__skip_frame = True
         self.__task_manager.add(self.__cam_rotation_task, "camera_rotation_task")
@@ -253,11 +276,13 @@ if __name__ == "__main__":  # for testing and example
     from direct.showbase.ShowBase import ShowBase
 
     base = ShowBase()
+    base.cTrav = CollisionTraverser
     avatar = Avatar(base)
     avatar.reparentTo(base.render)
 
     ground = base.loader.loadModel("./models/world.egg")
     ground.reparentTo(base.render)
+    avatar.setZ(5)
 
     base.run()
     pass
