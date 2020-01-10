@@ -35,7 +35,10 @@ collider_bottom = 1
 collider_top = 5
 
 climb_threshold = 1
-fall_speed = 9
+fall_speed = 15
+
+jump_time = 1
+jump_speed = 10
 
 
 class Avatar(Actor):
@@ -143,8 +146,6 @@ class Avatar(Actor):
            this won't be simulated gravity force since speed is gonna be constant"""
 
         self.__ground_pusher = self.attachNewNode(CollisionNode("ground-pusher"))
-        """self.__ground_pusher.node().addSolid(CollisionSegment(0, 0, collider_bottom,
-                                                              0, 0, collider_bottom-climb_threshold))"""
 
         self.__ground_pusher.node().addSolid(CollisionRay(0, 0, collider_bottom, 0, 0, -1))
 
@@ -154,8 +155,12 @@ class Avatar(Actor):
         base.cTrav.addCollider(self.__ground_pusher, self.__ground_handler)
         self.__task_manager.add(self.__ground_task, "ground-task")
 
-        """fall animation section"""
+        """fall animation section, also used for jumping"""
         self.__is_grounded = True
+
+        """jumping"""
+        self.accept("space", self.__jump)
+        self.accept("shift-space", self.__jump)
 
     def __set_key(self, key, value):
         """
@@ -318,6 +323,24 @@ class Avatar(Actor):
         self.set_animation("idle")
 
         self.acceptOnce("escape", self.play_char)
+        return
+
+    def __jump_task(self, task):
+        self.setZ(self, jump_speed * self.__global_clock.getDt())
+        return task.cont
+
+    def __end_jump(self):
+        self.__task_manager.remove("jumping")
+        self.__task_manager.add(self.__ground_task, "ground-task")
+        return
+
+    def __jump(self):
+        if self.__is_grounded:
+            self.__is_grounded = False
+            self.__task_manager.remove("ground-task")  # remove the ground task, or the avatar gets pushed down
+            self.__task_manager.add(self.__jump_task, "jumping")
+            self.__task_manager.doMethodLater(jump_time, self.__end_jump, "end-jump", extraArgs=[])
+            pass
         return
 
     pass
