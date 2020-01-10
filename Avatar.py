@@ -1,8 +1,9 @@
 import typing
 from direct.actor.Actor import Actor
 from panda3d.core import CompassEffect, ClockObject, Point3
-from panda3d.core import CollisionBox, CollisionSegment, CollisionNode
+from panda3d.core import CollisionBox, CollisionSegment, CollisionNode, CollisionRay
 from panda3d.core import CollisionHandlerPusher, CollisionHandlerQueue, CollisionTraverser
+
 
 cam_pivot_z_value: float = 3.0
 cam_distance: float = 20.0
@@ -11,7 +12,8 @@ mouse_tolerance: float = .05
 ralph: str = "./models/ralph.egg"
 ralph_animations: typing.Dict[str, str] = {"idle": "./models/ralph-idle",
                                            "walk": "./models/ralph-walk",
-                                           "run": "./models/ralph-run"}
+                                           "run": "./models/ralph-run",
+                                           "fall": "./models/ralph-fall"}
 
 angles_map = {(True, False, False, False): 180,  # gets the angle of the avatar based on pressed keys
               (False, True, False, False): 90,  # invalid combinations of keys are ignored
@@ -37,6 +39,21 @@ fall_speed = 9
 
 
 class Avatar(Actor):
+
+    def __get_closest_entry(entries, node):
+        res = None
+        try:
+            res = entries[0].getSurfacePoint(node)[2]
+            pass
+        except IndexError:
+            return res
+
+        for n3 in entries:
+            if n3.getSurfacePoint(node)[2] > res:
+                res = n3.getSurfacePoint(node)[2]
+                pass
+            pass
+        return res
 
     def __init__(self, game_base, model=ralph, animation_dict=None):
         """
@@ -126,13 +143,19 @@ class Avatar(Actor):
            this won't be simulated gravity force since speed is gonna be constant"""
 
         self.__ground_pusher = self.attachNewNode(CollisionNode("ground-pusher"))
-        self.__ground_pusher.node().addSolid(CollisionSegment(0, 0, collider_bottom,
-                                                              0, 0, collider_bottom-climb_threshold))
+        """self.__ground_pusher.node().addSolid(CollisionSegment(0, 0, collider_bottom,
+                                                              0, 0, collider_bottom-climb_threshold))"""
+
+        self.__ground_pusher.node().addSolid(CollisionRay(0, 0, collider_bottom, 0, 0, -1))
+
         self.__ground_handler = CollisionHandlerQueue()
         self.__ground_pusher.show()
         self.__ground_pusher.node().setIntoCollideMask(0b0)
         base.cTrav.addCollider(self.__ground_pusher, self.__ground_handler)
         self.__task_manager.add(self.__ground_task, "ground-task")
+
+        """fall animation section"""
+        self.__is_grounded = True
 
     def __set_key(self, key, value):
         """
@@ -193,20 +216,37 @@ class Avatar(Actor):
         :return: Task.cont
         """
 
-        angle = angles_map.get((self.__key_map["w"], self.__key_map["a"], self.__key_map["s"], self.__key_map["d"]))  # gets the angle for the pressed keys combination
+        # gets the angle for the pressed keys combination
+        angle = angles_map.get((self.__key_map["w"], self.__key_map["a"], self.__key_map["s"], self.__key_map["d"]))
+
         if angle is not None:                            # if the combination of keys is valid
             self.setH(self.__cam_pivot.getH() - angle)   # rotates the avatar the given value relatively to the camera
             if self.__key_map["shift"]:                  # if shift is pressed (run)
                 self.setY(self, run_speed * self.__global_clock.getDt())
-                self.set_animation("run")
+                if self.__is_grounded:
+                    self.set_animation("run")
+                    pass
+                else:
+                    self.set_animation("fall")
+                    pass
                 pass
             else:
                 self.setY(self, walk_speed * self.__global_clock.getDt())
-                self.set_animation("walk")
+                if self.__is_grounded:
+                    self.set_animation("walk")
+                    pass
+                else:
+                    self.set_animation("fall")
+                    pass
                 pass
             pass
         else:
-            self.set_animation("idle")
+            if self.__is_grounded:
+                self.set_animation("idle")
+                pass
+            else:
+                self.set_animation("fall")
+                pass
             pass
         return task.cont
 
@@ -248,8 +288,19 @@ class Avatar(Actor):
         return
 
     def __ground_task(self, task):
-        if self.__ground_handler.getNumEntries() == 0:
+        entries = list(self.__ground_handler.getEntries())
+
+        z = Avatar.__get_closest_entry(self.__ground_handler.getEntries(), self)
+
+        if z is None:
+            return task.cont
+        if z < -climb_threshold:
             self.setZ(self, -fall_speed * self.__global_clock.getDt())
+            self.__is_grounded = False
+            pass
+        elif z < climb_threshold * -.08:
+            self.setZ(self, -fall_speed * self.__global_clock.getDt())
+            self.__is_grounded = True
             pass
         return task.cont
 
