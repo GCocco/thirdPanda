@@ -1,6 +1,7 @@
 import typing
 from direct.actor.Actor import Actor
 from panda3d.core import CompassEffect, ClockObject
+from panda3d.core import CollisionBox, CollisionNode, Point3, CollisionHandlerPusher, CollisionTraverser
 
 cam_pivot_z_value: float = 3.0
 cam_distance: float = 20.0
@@ -24,6 +25,11 @@ fixed_update_delta: float = .01
 
 walk_speed: float = -20
 run_speed: float = -30
+
+collider_x = 1
+collider_y = 1
+collider_bottom = .5
+collider_top = 5
 
 
 class Avatar(Actor):
@@ -87,18 +93,28 @@ class Avatar(Actor):
 
         """animation section"""
 
-        """self.__blend_map = {"idle": 1.0,
-                            "walk": .0,
-                            "run": .0}
-        """
         self.__blend_map = {animation_name: .0 for animation_name in animation_dict}
 
         self.enableBlend()
         self.loop("idle")
         self.__current_animation = "idle"
         self.__prev_animation = None
-        self.play()
+        self.play_char()
 
+        """collisions section"""
+        self.__player_collider = self.attachNewNode(CollisionNode("player-collider"))
+        self.__player_collider.node().addSolid(CollisionBox(Point3(collider_x, collider_y, collider_bottom),
+                                                            Point3(-collider_x, -collider_y, collider_top)))
+        self.__player_collider.show()
+        pusher = CollisionHandlerPusher()
+        pusher.addCollider(self.__player_collider, self)
+        try:
+            base.cTrav.addCollider(pusher, self.__collider_handler)
+            pass
+        except AttributeError:
+            base.cTrav = CollisionTraverser()
+            base.cTrav.addCollider(self.__player_collider, pusher)
+            pass
         pass
 
     def __set_key(self, key, value):
@@ -219,7 +235,7 @@ class Avatar(Actor):
         self.__task_manager.add(self.__cam_rotation_task, "camera_rotation_task")
         self.__task_manager.add(self.__movement_task, "movement_task")
         self.__task_manager.add(self.__blend_task, "animation_blend")
-        self.acceptOnce("escape", self.stop)
+        self.acceptOnce("escape", self.stop_char)
         return
 
     def stop_char(self):
@@ -227,7 +243,7 @@ class Avatar(Actor):
         self.__task_manager.remove("movement_task")
         self.set_animation("idle")
 
-        self.acceptOnce("escape", self.play)
+        self.acceptOnce("escape", self.play_char)
         return
 
     pass
@@ -242,5 +258,6 @@ if __name__ == "__main__":  # for testing and example
 
     ground = base.loader.loadModel("./models/world.egg")
     ground.reparentTo(base.render)
+
     base.run()
     pass
