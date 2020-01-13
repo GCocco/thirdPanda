@@ -6,7 +6,9 @@ from panda3d.core import CollisionHandlerPusher, CollisionHandlerQueue, Collisio
 
 
 cam_pivot_z_value: float = 3.0
-cam_distance: float = 20.0
+cam_movement: float = 5.0
+cam_max_distance: float = 70.0
+cam_min_distance: float = 10.0
 mouse_tolerance: float = .05
 
 ralph: str = "./models/ralph.egg"
@@ -43,17 +45,17 @@ jump_speed = 10
 
 class Avatar(Actor):
 
-    def __get_closest_entry(entries, node):
+    def __get_closest_entry(entries, node, axis):
         res = None
         try:
-            res = entries[0].getSurfacePoint(node)[2]
+            res = entries[0].getSurfacePoint(node)[axis]
             pass
         except IndexError:
             return res
 
         for n3 in entries:
-            if n3.getSurfacePoint(node)[2] > res:
-                res = n3.getSurfacePoint(node)[2]
+            if n3.getSurfacePoint(node)[axis] > res:
+                res = n3.getSurfacePoint(node)[axis]
                 pass
             pass
         return res
@@ -71,6 +73,8 @@ class Avatar(Actor):
             pass
 
         super().__init__(model, animation_dict)
+        self.__cam = game_base.cam
+        self.__cam_distance: float = 20.0
         self.__task_manager = game_base.taskMgr  # gets the task manager
 
         """camera controls section"""
@@ -85,7 +89,7 @@ class Avatar(Actor):
         self.__cam_pivot.setEffect(CompassEffect.make(game_base.render))  # makes the pivot ignore the avatar rotations
 
         game_base.cam.reparentTo(self.__cam_pivot)  # attach the camera to the node
-        game_base.cam.setY(-cam_distance)  # moves the camera back so avatar is visible
+        game_base.cam.setY(-self.__cam_distance)  # moves the camera back so avatar is visible
 
         """avatar movement section"""
         self.__global_clock = ClockObject.getGlobalClock()
@@ -127,7 +131,7 @@ class Avatar(Actor):
         self.__player_collider = self.attachNewNode(CollisionNode("player-collider"))
         self.__player_collider.node().addSolid(CollisionBox(Point3(collider_x, collider_y, collider_bottom),
                                                             Point3(-collider_x, -collider_y, collider_top)))
-
+        self.__player_collider.node().setIntoCollideMask(0b0)
         pusher = CollisionHandlerPusher()
         pusher.addCollider(self.__player_collider, self)
 
@@ -152,7 +156,7 @@ class Avatar(Actor):
         self.__ground_handler = CollisionHandlerQueue()
         self.__ground_pusher.show()
         self.__ground_pusher.node().setIntoCollideMask(0b0)
-        base.cTrav.addCollider(self.__ground_pusher, self.__ground_handler)
+        game_base.cTrav.addCollider(self.__ground_pusher, self.__ground_handler)
         self.__task_manager.add(self.__ground_task, "ground-task")
 
         """fall animation section, also used for jumping"""
@@ -161,6 +165,21 @@ class Avatar(Actor):
         """jumping"""
         self.accept("space", self.__jump)
         self.accept("shift-space", self.__jump)
+
+        """the camera gets into meshes, it's really a bother,
+        this will make the camera stick to the closest surface in range"""
+
+        self.__camera_collider = self.__cam_pivot.attachNewNode(CollisionNode("camera-collider"))
+        self.__camera_segment = CollisionSegment(0, 0, 0, 0, -self.__cam_distance, 0)
+        self.__camera_collider.node().addSolid(self.__camera_segment)
+        self.__camera_collider.node().setIntoCollideMask(0b0)
+        self.__camera_handler = CollisionHandlerQueue()
+        game_base.cTrav.addCollider(self.__camera_collider, self.__camera_handler)
+        self.__task_manager.add(self.__camera_collide, "cam-collider")
+
+        """scrolling the mouse wheel makes the camera get closer/further from the avatar"""
+        self.accept("wheel_up", self.__move_camera, [True])
+        self.accept("wheel_down", self.__move_camera, [False])
 
     def __set_key(self, key, value):
         """
@@ -295,7 +314,7 @@ class Avatar(Actor):
     def __ground_task(self, task):
         entries = list(self.__ground_handler.getEntries())
 
-        z = Avatar.__get_closest_entry(self.__ground_handler.getEntries(), self)
+        z = Avatar.__get_closest_entry(self.__ground_handler.getEntries(), self, 2)
 
         if z is None:
             return task.cont
@@ -342,6 +361,28 @@ class Avatar(Actor):
             self.__task_manager.doMethodLater(jump_time, self.__end_jump, "end-jump", extraArgs=[])
             pass
         return
+
+    def __move_camera(self, direction):
+        if direction and self.__cam_distance < cam_max_distance:
+            self.__cam_distance += cam_movement
+            pass
+        elif not direction and self.__cam_distance > cam_min_distance:
+            self.__cam_distance -= cam_movement
+            pass
+        else:
+            return
+        self.__camera_segment.setPointB((0, -self.__cam_distance, 0))
+        return
+
+    def __camera_collide(self, task):
+        distance = Avatar.__get_closest_entry(self.__camera_handler.getEntries(), self.__cam_pivot, 1)
+        if distance is not None:
+            self.__cam.setY(self.__cam_pivot, distance)
+            pass
+        else:
+            self.__cam.setY(self.__cam_pivot, -self.__cam_distance)
+            pass
+        return task.cont
 
     pass
 
